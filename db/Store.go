@@ -465,6 +465,8 @@ type TaskManager interface {
 	SetWaitingTasksToStopped(projectID int, templateID int) error
 	GetTemplateTasks(projectID int, templateID int, params RetrieveQueryParams) ([]TaskWithTpl, error)
 	GetProjectTasks(projectID int, params RetrieveQueryParams) ([]TaskWithTpl, error)
+	GetScheduleTasks(projectID int, scheduleIDs []int, params RetrieveQueryParams) ([]TaskWithTpl, error)
+	GetOnBootScheduleTasks(projectID int, params RetrieveQueryParams) ([]TaskWithTpl, error)
 	GetTask(projectID int, taskID int) (Task, error)
 	GetTaskByID(taskID int) (Task, error)
 	DeleteTaskWithOutputs(projectID int, taskID int) error

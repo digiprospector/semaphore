@@ -380,6 +380,8 @@ func Route(
 	projectUserAPI.Path("/workflows").HandlerFunc(workflowController.AddWorkflow).Methods("POST")
 
 	projectUserAPI.Path("/schedules").HandlerFunc(projects.GetProjectSchedules).Methods("GET", "HEAD")
+	projectUserAPI.Path("/schedules/today/overview").HandlerFunc(projects.GetProjectTodayOverview).Methods("GET", "HEAD")
+	projectUserAPI.Path("/schedules/on_boot/overview").HandlerFunc(projects.GetProjectOnBootOverview).Methods("GET", "HEAD")
 	projectUserAPI.Path("/schedules").HandlerFunc(projects.AddSchedule).Methods("POST")
 	projectUserAPI.Path("/schedules/validate").HandlerFunc(projects.ValidateScheduleCronFormat).Methods("POST")
 

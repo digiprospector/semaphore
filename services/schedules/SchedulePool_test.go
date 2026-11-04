@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/semaphoreui/semaphore/db"
 	"github.com/semaphoreui/semaphore/db/sql"
 	"github.com/semaphoreui/semaphore/pkg/ssh"
@@ -12,6 +13,7 @@ import (
 	"github.com/semaphoreui/semaphore/services/tasks"
 	"github.com/semaphoreui/semaphore/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockEncryptionService is a test implementation of AccessKeyEncryptionService
@@ -72,6 +74,89 @@ func TestOneTimeSchedule(t *testing.T) {
 	if !schedule.Next(future).IsZero() {
 		t.Fatalf("expected schedule to stop after run time")
 	}
+}
+
+func TestOnBootScheduleRunsOncePerProcessAndSurvivesRefresh(t *testing.T) {
+	store := sql.InitConfigCreateTestStore()
+	originalScheduleConfig := util.Config.Schedule
+	util.Config.Schedule = &util.ScheduleConfig{Timezone: "UTC"}
+	t.Cleanup(func() {
+		util.Config.Schedule = originalScheduleConfig
+	})
+	project, err := store.CreateProject(db.Project{Name: "on-boot"})
+	require.NoError(t, err)
+
+	key, err := store.CreateAccessKey(db.AccessKey{ProjectID: &project.ID, Type: db.AccessKeyNone})
+	require.NoError(t, err)
+	repo, err := store.CreateRepository(db.Repository{
+		ProjectID: project.ID,
+		Name:      "repo",
+		GitURL:    "https://example.com/repo.git",
+		GitBranch: "main",
+		SSHKeyID:  key.ID,
+	})
+	require.NoError(t, err)
+	template, err := store.CreateTemplate(db.Template{
+		ProjectID:    project.ID,
+		RepositoryID: repo.ID,
+		Name:         "template",
+		Playbook:     "site.yml",
+	})
+	require.NoError(t, err)
+	schedule, err := store.CreateSchedule(db.Schedule{
+		ProjectID:     project.ID,
+		TemplateID:    template.ID,
+		Name:          "after startup",
+		Type:          db.ScheduleTypeOnBoot,
+		TimeAfterBoot: 90,
+		Active:        true,
+	})
+	require.NoError(t, err)
+
+	pool := CreateSchedulePool(store, &tasks.TaskPool{}, &mockAccessKeyInstaller{}, &mockEncryptionService{})
+	t.Cleanup(pool.Destroy)
+	bootTime, eligibleIDs := pool.GetOnBootState()
+	assert.WithinDuration(t, time.Now(), bootTime, time.Second)
+	assert.Equal(t, []int{schedule.ID}, eligibleIDs)
+	assert.True(t, pool.IsOnBootScheduleEligible(schedule.ID))
+	go pool.Run()
+
+	bootRunAt := pool.bootTime.Add(90 * time.Second)
+	var entries []cron.Entry
+	require.Eventually(t, func() bool {
+		entries = pool.cron.Entries()
+		return len(entries) == 1 && !entries[0].Next.IsZero()
+	}, time.Second, time.Millisecond*10)
+	assert.Equal(t, bootRunAt, entries[0].Next)
+
+	loaded, err := store.GetSchedule(project.ID, schedule.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 90, loaded.TimeAfterBoot)
+
+	pool.Refresh()
+	require.Eventually(t, func() bool {
+		entries = pool.cron.Entries()
+		return len(entries) == 1 && !entries[0].Next.IsZero()
+	}, time.Second, time.Millisecond*10)
+	assert.Equal(t, bootRunAt, entries[0].Next)
+
+	assert.True(t, pool.claimOnBootSchedule(schedule.ID))
+	assert.False(t, pool.claimOnBootSchedule(schedule.ID))
+	pool.Refresh()
+	assert.Empty(t, pool.cron.Entries())
+
+	lateSchedule, err := store.CreateSchedule(db.Schedule{
+		ProjectID:     project.ID,
+		TemplateID:    template.ID,
+		Name:          "created after startup",
+		Type:          db.ScheduleTypeOnBoot,
+		TimeAfterBoot: 0,
+		Active:        true,
+	})
+	require.NoError(t, err)
+	pool.Refresh()
+	assert.NotContains(t, pool.onBootScheduleIDs, lateSchedule.ID)
+	assert.Empty(t, pool.cron.Entries())
 }
 
 // mockDeduplicator is a test implementation of ScheduleDeduplicator

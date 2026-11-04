@@ -1077,8 +1077,24 @@ definitions:
       id:
         type: integer
         example: 23
+      project_id:
+        type: integer
       template_id:
         type: integer
+      schedule_id:
+        type: integer
+        x-nullable: true
+      created:
+        type: string
+        format: date-time
+      start:
+        type: string
+        format: date-time
+        x-nullable: true
+      end:
+        type: string
+        format: date-time
+        x-nullable: true
       status:
         type: string
       playbook:
@@ -1412,11 +1428,45 @@ definitions:
       run_at:
         type: string
         format: date-time
+      time_after_boot:
+        type: integer
+        description: Delay in seconds after the Semaphore process starts before running an on_boot schedule.
       type:
         type: string
-        enum: ['', 'run_at']
+        enum: ['', 'run_at', 'on_boot']
       task_params:
         $ref: '#/definitions/TaskPrams'
+
+  OnBootOverview:
+    type: object
+    properties:
+      boot_time:
+        type: string
+        format: date-time
+      eligible_schedule_ids:
+        type: array
+        items:
+          type: integer
+      schedules:
+        type: array
+        items:
+          $ref: '#/definitions/Schedule'
+      tasks:
+        type: array
+        items:
+          $ref: '#/definitions/Task'
+
+  TodayScheduleOverview:
+    type: object
+    properties:
+      schedules:
+        type: array
+        items:
+          $ref: '#/definitions/Schedule'
+      tasks:
+        type: array
+        items:
+          $ref: '#/definitions/Task'
 
   Schedule:
     type: object
@@ -1436,9 +1486,12 @@ definitions:
       run_at:
         type: string
         format: date-time
+      time_after_boot:
+        type: integer
+        description: Delay in seconds after the Semaphore process starts before running an on_boot schedule.
       type:
         type: string
-        enum: ['', 'run_at']
+        enum: ['', 'run_at', 'on_boot']
       task_params:
         $ref: '#/definitions/TaskPrams'
 
@@ -4086,6 +4139,32 @@ paths:
           description: schedule created
           schema:
             $ref: "#/definitions/Schedule"
+
+  /project/{project_id}/schedules/on_boot/overview:
+    parameters:
+      - $ref: "#/parameters/project_id"
+    get:
+      tags:
+        - schedule
+      summary: Get on-boot tasks and execution state for this server process
+      responses:
+        200:
+          description: On-boot schedules, task history, and current process boot state
+          schema:
+            $ref: "#/definitions/OnBootOverview"
+
+  /project/{project_id}/schedules/today/overview:
+    parameters:
+      - $ref: "#/parameters/project_id"
+    get:
+      tags:
+        - schedule
+      summary: Get schedules and all their tasks for the Today overview
+      responses:
+        200:
+          description: Project schedules and tasks linked to those schedules
+          schema:
+            $ref: "#/definitions/TodayScheduleOverview"
 
   # project views
   /project/{project_id}/views:

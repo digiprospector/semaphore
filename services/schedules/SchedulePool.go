@@ -3,6 +3,7 @@ package schedules
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -121,8 +122,7 @@ func (r ScheduleRunner) Run() {
 	if scheduleType == "" {
 		scheduleType = db.ScheduleTypeCron
 	}
-
-	if schedule.RepositoryID != nil {
+	if schedule.RepositoryID != nil && scheduleType != db.ScheduleTypeOnBoot {
 		var updated bool
 		updated, err = r.tryUpdateScheduleCommitHash(schedule)
 		if err != nil {
@@ -149,7 +149,11 @@ func (r ScheduleRunner) Run() {
 		return
 	}
 
-	// In HA mode, ensure only one node fires this schedule occurrence.
+	// On-boot schedules are limited to one attempt per process; HA mode also
+	// coordinates the occurrence across nodes through the deduplicator.
+	if scheduleType == db.ScheduleTypeOnBoot && !r.pool.claimOnBootSchedule(schedule.ID) {
+		return
+	}
 	if r.pool.dedup != nil && !r.pool.dedup.TryLockExecution(r.scheduleID) {
 		log.WithFields(log.Fields{
 			"project_id":  r.projectID,
@@ -193,11 +197,16 @@ func (r ScheduleRunner) Run() {
 			"template_id": schedule.TemplateID,
 		}).Error("failed to add task")
 	}
+	if scheduleType == db.ScheduleTypeOnBoot && err != nil {
+		r.pool.locker.Lock()
+		delete(r.pool.onBootFired, schedule.ID)
+		r.pool.locker.Unlock()
+	}
 
 	// For "RunAt" schedules, the schedule should only trigger once at the specified time and be deactivated afterwards.
 	// Calling Refresh here ensures that after the job has fired, the pool reloads the active schedules
 	// from the database (where this run-at schedule may now be disabled) so it is not executed again.
-	if scheduleType == db.ScheduleTypeRunAt {
+	if scheduleType == db.ScheduleTypeRunAt || scheduleType == db.ScheduleTypeOnBoot {
 		r.pool.Refresh()
 	}
 }
@@ -249,6 +258,10 @@ type ScheduleDeduplicator interface {
 
 type SchedulePool struct {
 	cron              *cron.Cron
+	bootTime          time.Time
+	onBootScheduleIDs map[int]struct{}
+	onBootFired       map[int]struct{}
+	onBootInitialized bool
 	locker            sync.Locker
 	dedup             ScheduleDeduplicator
 	store             db.Store
@@ -263,7 +276,44 @@ func (p *SchedulePool) SetDeduplicator(d ScheduleDeduplicator) {
 	p.dedup = d
 }
 
+// GetOnBootState returns the startup time and schedules eligible on this process.
+func (p *SchedulePool) GetOnBootState() (time.Time, []int) {
+	p.locker.Lock()
+	defer p.locker.Unlock()
+
+	scheduleIDs := make([]int, 0, len(p.onBootScheduleIDs))
+	for scheduleID := range p.onBootScheduleIDs {
+		scheduleIDs = append(scheduleIDs, scheduleID)
+	}
+	sort.Ints(scheduleIDs)
+	return p.bootTime, scheduleIDs
+}
+
+func (p *SchedulePool) IsOnBootScheduleEligible(scheduleID int) bool {
+	p.locker.Lock()
+	defer p.locker.Unlock()
+	_, eligible := p.onBootScheduleIDs[scheduleID]
+	return eligible
+}
+
+func (p *SchedulePool) claimOnBootSchedule(scheduleID int) bool {
+	p.locker.Lock()
+	defer p.locker.Unlock()
+
+	if _, eligible := p.onBootScheduleIDs[scheduleID]; !eligible {
+		return false
+	}
+	if _, fired := p.onBootFired[scheduleID]; fired {
+		return false
+	}
+
+	p.onBootFired[scheduleID] = struct{}{}
+	return true
+}
+
 func (p *SchedulePool) init() {
+	p.bootTime = time.Now()
+	p.onBootFired = make(map[int]struct{})
 	loc, err := time.LoadLocation(util.Config.Schedule.Timezone)
 	if err != nil {
 		panic(err)
@@ -287,11 +337,25 @@ func (p *SchedulePool) Refresh() {
 	defer p.locker.Unlock()
 
 	p.clear()
+	if !p.onBootInitialized {
+		p.onBootScheduleIDs = make(map[int]struct{})
+		for _, schedule := range schedules {
+			if schedule.Type == db.ScheduleTypeOnBoot && schedule.Active {
+				p.onBootScheduleIDs[schedule.ID] = struct{}{}
+			}
+		}
+		p.onBootInitialized = true
+	}
 	now := time.Now().In(p.cron.Location())
 	for _, schedule := range schedules {
 		scheduleType := schedule.Type
 		if scheduleType == "" {
 			scheduleType = db.ScheduleTypeCron
+		}
+		if scheduleType == db.ScheduleTypeOnBoot && !schedule.Active {
+			if _, eligible := p.onBootScheduleIDs[schedule.ID]; eligible {
+				p.onBootFired[schedule.ID] = struct{}{}
+			}
 		}
 
 		if schedule.RepositoryID == nil && !schedule.Active {
@@ -341,6 +405,18 @@ func (p *SchedulePool) Refresh() {
 				continue
 			}
 
+			_, err = p.addOneTimeRunner(runner, runAt)
+		case db.ScheduleTypeOnBoot:
+			if _, eligible := p.onBootScheduleIDs[schedule.ID]; !eligible {
+				continue
+			}
+			if _, fired := p.onBootFired[schedule.ID]; fired {
+				continue
+			}
+			runAt := p.bootTime.Add(time.Duration(schedule.TimeAfterBoot) * time.Second)
+			if !runAt.After(time.Now()) {
+				runAt = time.Now().Add(time.Second)
+			}
 			_, err = p.addOneTimeRunner(runner, runAt)
 		case db.ScheduleTypeCron:
 			if schedule.CronFormat == "" {

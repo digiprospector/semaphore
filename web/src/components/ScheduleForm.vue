@@ -6,6 +6,7 @@
     v-if="templates && item != null"
   >
     <v-alert
+      v-if="type !== 'on_boot'"
       v-model="showInfo"
       color="info"
       text
@@ -96,6 +97,24 @@
           </template>
         </v-checkbox>
       </div>
+    </div>
+
+    <div v-else-if="type === 'on_boot'">
+      <v-text-field
+        v-model.number="item.time_after_boot"
+        type="number"
+        min="0"
+        step="1"
+        label="Seconds after Semaphore starts"
+        :rules="[
+          v => Number.isInteger(Number(v)) && Number(v) >= 0
+            || 'Enter a non-negative whole number of seconds',
+        ]"
+        :disabled="formSaving"
+        suffix="seconds"
+        outlined
+        dense
+      />
     </div>
 
     <div v-else>
@@ -226,6 +245,7 @@
     </div>
 
     <div
+      v-if="type !== 'on_boot'"
       class="text-center text-subtitle-1 mb-3"
       :class="{'mt-8': !rawCron, 'mt-3': rawCron}"
       style="color: limegreen; font-weight: bold;"
@@ -573,6 +593,7 @@ export default {
         delete_after_run: false,
         task_params: {},
         run_at: null,
+        time_after_boot: 0,
       };
     },
 
@@ -728,6 +749,8 @@ export default {
         this.setRunAtInputFromItem();
       } else if (this.type === 'run_at') {
         this.setDefaultRunAt();
+      } else if (this.type === 'on_boot' && this.item.time_after_boot == null) {
+        this.item.time_after_boot = 0;
       } else if (this.isNew) {
         this.item.cron_format = '* * * * *';
       }
@@ -750,8 +773,19 @@ export default {
 
         this.item.run_at = parsed.toISOString();
         this.item.cron_format = this.item.cron_format || '';
+        this.item.time_after_boot = 0;
+      } else if (this.type === 'on_boot') {
+        const delay = Number(this.item.time_after_boot);
+        if (!Number.isInteger(delay) || delay < 0 || delay > 2147483647) {
+          this.formError = 'Please provide a whole number of seconds between 0 and 2147483647.';
+          throw new Error(this.formError);
+        }
+        this.item.time_after_boot = delay;
+        this.item.run_at = null;
+        this.item.cron_format = '';
       } else {
         this.item.run_at = null;
+        this.item.time_after_boot = 0;
       }
     },
 
