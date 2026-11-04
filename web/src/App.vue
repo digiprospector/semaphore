@@ -243,6 +243,32 @@
 
       <v-list class="pt-0" v-if="project">
         <v-list-item
+          key="today"
+          :to="`/project/${projectId}/today`"
+          data-testid="sidebar-today"
+        >
+          <v-list-item-icon>
+            <v-icon>mdi-calendar-today</v-icon>
+          </v-list-item-icon>
+          <v-list-item-content>
+            <v-list-item-title>{{ $t('today') }}</v-list-item-title>
+          </v-list-item-content>
+        </v-list-item>
+
+        <v-list-item
+          key="boot"
+          :to="`/project/${projectId}/boot`"
+          data-testid="sidebar-boot"
+        >
+          <v-list-item-icon>
+            <v-icon>mdi-power</v-icon>
+          </v-list-item-icon>
+          <v-list-item-content>
+            <v-list-item-title>{{ $t('boot') }}</v-list-item-title>
+          </v-list-item-content>
+        </v-list-item>
+
+        <v-list-item
           key="dashboard"
           :to="`/project/${projectId}/history`"
           data-testid="sidebar-dashboard"

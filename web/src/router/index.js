@@ -40,6 +40,7 @@ import WorkflowRuns from '../views/project/workflow/WorkflowRuns.vue';
 import WorkflowStats from '../views/project/workflow/WorkflowStats.vue';
 import WorkflowRun from '../views/project/WorkflowRun.vue';
 import WorkflowEditor from '../views/project/WorkflowEditor.vue';
+import ScheduleOverview from '../views/project/ScheduleOverview.vue';
 
 Vue.use(VueRouter);
 
@@ -79,6 +80,16 @@ const routes = [
   {
     path: '/project/:projectId/schedule',
     component: Schedule,
+  },
+  {
+    path: '/project/:projectId/today',
+    component: ScheduleOverview,
+    props: { mode: 'today' },
+  },
+  {
+    path: '/project/:projectId/boot',
+    component: ScheduleOverview,
+    props: { mode: 'boot' },
   },
   {
     path: '/project/:projectId/settings',

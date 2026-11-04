@@ -25,8 +25,8 @@ func (d *SqlDb) CreateSchedule(schedule db.Schedule) (newSchedule db.Schedule, e
 
 	insertID, err := d.insert(
 		"id",
-		"insert into project__schedule (project_id, template_id, cron_format, repository_id, `name`, `active`, run_at, `type`, task_params_id, delete_after_run)"+
-			"values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"insert into project__schedule (project_id, template_id, cron_format, repository_id, `name`, `active`, run_at, time_after_boot, `type`, task_params_id, delete_after_run)"+
+			"values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		schedule.ProjectID,
 		schedule.TemplateID,
 		schedule.CronFormat,
@@ -34,6 +34,7 @@ func (d *SqlDb) CreateSchedule(schedule db.Schedule) (newSchedule db.Schedule, e
 		schedule.Name,
 		schedule.Active,
 		schedule.RunAt,
+		schedule.TimeAfterBoot,
 		schedule.Type,
 		schedule.TaskParamsID,
 		schedule.DeleteAfterRun)
@@ -95,6 +96,7 @@ func (d *SqlDb) UpdateSchedule(schedule db.Schedule) (err error) {
 		"`name`=?, "+
 		"`active`=?, "+
 		"run_at=?, "+
+		"time_after_boot=?, "+
 		"`type`=?, "+
 		"last_commit_hash = NULL, "+
 		"task_params_id=?, "+
@@ -106,6 +108,7 @@ func (d *SqlDb) UpdateSchedule(schedule db.Schedule) (err error) {
 		schedule.Name,
 		schedule.Active,
 		schedule.RunAt,
+		schedule.TimeAfterBoot,
 		schedule.Type,
 		schedule.TaskParamsID,
 		schedule.DeleteAfterRun,
@@ -162,7 +165,7 @@ func (d *SqlDb) DeleteSchedule(projectID int, scheduleID int) (err error) {
 }
 
 func (d *SqlDb) GetSchedules() (schedules []db.Schedule, err error) {
-	_, err = d.selectAll(&schedules, "select * from project__schedule where cron_format != '' or run_at is not null")
+	_, err = d.selectAll(&schedules, "select * from project__schedule where cron_format != '' or run_at is not null or `type` = ?", db.ScheduleTypeOnBoot)
 	return
 }
 

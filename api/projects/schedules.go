@@ -54,6 +54,77 @@ func GetProjectSchedules(w http.ResponseWriter, r *http.Request) {
 
 	helpers.WriteJSON(w, http.StatusOK, tplSchedules)
 }
+
+type OnBootOverview struct {
+	BootTime            time.Time            `json:"boot_time"`
+	EligibleScheduleIDs []int                `json:"eligible_schedule_ids"`
+	Schedules           []db.ScheduleWithTpl `json:"schedules"`
+	Tasks               []db.TaskWithTpl     `json:"tasks"`
+}
+
+func GetProjectOnBootOverview(w http.ResponseWriter, r *http.Request) {
+	project := helpers.GetFromContext(r, "project").(db.Project)
+	store := helpers.Store(r)
+
+	projectSchedules, err := store.GetProjectSchedules(project.ID, false, false)
+	if err != nil {
+		helpers.WriteError(w, err)
+		return
+	}
+
+	bootSchedules := make([]db.ScheduleWithTpl, 0)
+	for _, schedule := range projectSchedules {
+		if schedule.Type != db.ScheduleTypeOnBoot {
+			continue
+		}
+		bootSchedules = append(bootSchedules, schedule)
+	}
+
+	schedulePool := helpers.GetFromContext(r, "schedule_pool").(schedules.SchedulePool)
+	bootTime, eligibleScheduleIDs := schedulePool.GetOnBootState()
+	tasks, err := store.GetOnBootScheduleTasks(project.ID, db.RetrieveQueryParams{})
+	if err != nil {
+		helpers.WriteError(w, err)
+		return
+	}
+
+	helpers.WriteJSON(w, http.StatusOK, OnBootOverview{
+		BootTime:            bootTime,
+		EligibleScheduleIDs: eligibleScheduleIDs,
+		Schedules:           bootSchedules,
+		Tasks:               tasks,
+	})
+}
+
+func GetProjectTodayOverview(w http.ResponseWriter, r *http.Request) {
+	project := helpers.GetFromContext(r, "project").(db.Project)
+	store := helpers.Store(r)
+
+	schedules, err := store.GetProjectSchedules(project.ID, false, false)
+	if err != nil {
+		helpers.WriteError(w, err)
+		return
+	}
+
+	scheduleIDs := make([]int, 0, len(schedules))
+	for _, schedule := range schedules {
+		if schedule.Type == db.ScheduleTypeCron || schedule.Type == db.ScheduleTypeRunAt {
+			scheduleIDs = append(scheduleIDs, schedule.ID)
+		}
+	}
+
+	tasks, err := store.GetScheduleTasks(project.ID, scheduleIDs, db.RetrieveQueryParams{})
+	if err != nil {
+		helpers.WriteError(w, err)
+		return
+	}
+
+	helpers.WriteJSON(w, http.StatusOK, map[string]any{
+		"schedules": schedules,
+		"tasks":     tasks,
+	})
+}
+
 func GetTemplateSchedules(w http.ResponseWriter, r *http.Request) {
 	project := helpers.GetFromContext(r, "project").(db.Project)
 	templateID, ok := helpers.GetIntParamOrAbort("template_id", w, r)
@@ -103,9 +174,22 @@ func validateSchedulePayload(schedule *db.Schedule, w http.ResponseWriter) bool 
 		}
 
 		schedule.CronFormat = ""
+		schedule.TimeAfterBoot = 0
+		return true
+	case db.ScheduleTypeOnBoot:
+		if schedule.TimeAfterBoot < 0 || schedule.TimeAfterBoot > 2147483647 {
+			helpers.WriteJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "time_after_boot must be between 0 and 2147483647 seconds",
+			})
+			return false
+		}
+		schedule.RunAt = nil
+		schedule.CronFormat = ""
+		schedule.DeleteAfterRun = false
 		return true
 	case db.ScheduleTypeCron:
 		schedule.RunAt = nil
+		schedule.TimeAfterBoot = 0
 		return validateCronFormat(schedule.CronFormat, w)
 	default:
 		helpers.WriteJSON(w, http.StatusBadRequest, map[string]string{

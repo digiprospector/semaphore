@@ -73,6 +73,15 @@
             </v-list-item-icon>
             <v-list-item-title>Run once</v-list-item-title>
           </v-list-item>
+          <v-list-item
+            link
+            @click="editSchedule('new', 'on_boot');"
+          >
+            <v-list-item-icon>
+              <v-icon>mdi-power</v-icon>
+            </v-list-item-icon>
+            <v-list-item-title>On boot</v-list-item-title>
+          </v-list-item>
         </v-list>
       </v-menu>
 
@@ -116,6 +125,9 @@
       <template v-slot:item.cron_format="{ item }">
         <div v-if="item.type === 'run_at'">
           {{ formatRunAt(item) }}
+        </div>
+        <div v-else-if="item.type === 'on_boot'">
+          After startup: {{ item.time_after_boot || 0 }} seconds
         </div>
         <code v-else>{{ item.cron_format }}</code>
       </template>

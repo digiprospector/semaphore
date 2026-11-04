@@ -3,8 +3,9 @@ package db
 import "time"
 
 const (
-	ScheduleTypeCron  = ""
-	ScheduleTypeRunAt = "run_at"
+	ScheduleTypeCron   = ""
+	ScheduleTypeRunAt  = "run_at"
+	ScheduleTypeOnBoot = "on_boot"
 )
 
 type Schedule struct {
@@ -20,6 +21,7 @@ type Schedule struct {
 	LastCommitHash *string    `db:"last_commit_hash" json:"-" backup:"-"`
 	RepositoryID   *int       `db:"repository_id" json:"repository_id" backup:"-"`
 	RunAt          *time.Time `db:"run_at" json:"run_at,omitempty"`
+	TimeAfterBoot  int        `db:"time_after_boot" json:"time_after_boot"`
 
 	TaskParamsID *int        `db:"task_params_id" json:"-" backup:"-"`
 	TaskParams   *TaskParams `db:"-" json:"task_params,omitempty" backup:"task_params"`

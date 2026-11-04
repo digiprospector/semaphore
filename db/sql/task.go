@@ -274,7 +274,7 @@ func (d *SqlDb) InsertTaskOutputBatch(output []db.TaskOutput) error {
 // getTasks retrieves tasks for a given project, optionally filtered by template and/or task IDs.
 // The taskIDs parameter has three-way semantics: nil means no filtering by ID,
 // and a non-nil non-empty slice restricts the query to only those task IDs.
-func (d *SqlDb) getTasks(projectID int, templateID *int, workflowRunID *int, taskIDs []int, params db.RetrieveQueryParams, tasks *[]db.TaskWithTpl) (err error) {
+func (d *SqlDb) getTasks(projectID int, templateID *int, workflowRunID *int, taskIDs []int, scheduleIDs []int, onBootOnly bool, params db.RetrieveQueryParams, tasks *[]db.TaskWithTpl) (err error) {
 
 	if taskIDs != nil && len(taskIDs) == 0 {
 		*tasks = []db.TaskWithTpl{}
@@ -313,6 +313,19 @@ func (d *SqlDb) getTasks(projectID int, templateID *int, workflowRunID *int, tas
 
 	if taskIDs != nil {
 		q = q.Where(squirrel.Eq{"task.id": taskIDs})
+	}
+
+	if scheduleIDs != nil {
+		if len(scheduleIDs) == 0 {
+			*tasks = []db.TaskWithTpl{}
+			return nil
+		}
+		q = q.Where(squirrel.Eq{"task.schedule_id": scheduleIDs})
+	}
+
+	if onBootOnly {
+		q = q.Join("project__schedule as schedule on schedule.id=task.schedule_id").
+			Where("schedule.type=?", db.ScheduleTypeOnBoot)
 	}
 
 	// Keyset (cursor) pagination: return only tasks strictly older than the
@@ -365,19 +378,31 @@ func (d *SqlDb) GetTaskByID(taskID int) (task db.Task, err error) {
 }
 
 func (d *SqlDb) GetTemplateTasks(projectID int, templateID int, params db.RetrieveQueryParams) (tasks []db.TaskWithTpl, err error) {
-	err = d.getTasks(projectID, &templateID, nil, nil, params, &tasks)
+	err = d.getTasks(projectID, &templateID, nil, nil, nil, false, params, &tasks)
 	return
 }
 
 func (d *SqlDb) GetProjectTasks(projectID int, params db.RetrieveQueryParams) (tasks []db.TaskWithTpl, err error) {
 	tasks = make([]db.TaskWithTpl, 0)
-	err = d.getTasks(projectID, nil, nil, nil, params, &tasks)
+	err = d.getTasks(projectID, nil, nil, nil, nil, false, params, &tasks)
+	return
+}
+
+func (d *SqlDb) GetScheduleTasks(projectID int, scheduleIDs []int, params db.RetrieveQueryParams) (tasks []db.TaskWithTpl, err error) {
+	tasks = make([]db.TaskWithTpl, 0)
+	err = d.getTasks(projectID, nil, nil, nil, scheduleIDs, false, params, &tasks)
+	return
+}
+
+func (d *SqlDb) GetOnBootScheduleTasks(projectID int, params db.RetrieveQueryParams) (tasks []db.TaskWithTpl, err error) {
+	tasks = make([]db.TaskWithTpl, 0)
+	err = d.getTasks(projectID, nil, nil, nil, nil, true, params, &tasks)
 	return
 }
 
 func (d *SqlDb) GetWorkflowRunTasks(projectID int, runID int, params db.RetrieveQueryParams) (tasks []db.TaskWithTpl, err error) {
 	tasks = make([]db.TaskWithTpl, 0)
-	err = d.getTasks(projectID, nil, &runID, nil, params, &tasks)
+	err = d.getTasks(projectID, nil, &runID, nil, nil, false, params, &tasks)
 	return
 }
 
