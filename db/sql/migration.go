@@ -247,6 +247,8 @@ func (d *SqlDb) ApplyMigration(migration db.Migration) error {
 		err = migration_2_18_4{db: d}.PreApply(tx)
 	case "2.20.4":
 		err = migration_2_20_4{db: d}.PreApply(tx)
+	case "2.20.18":
+		err = migration_2_20_18{db: d}.PreApply(tx)
 	}
 
 	if err != nil {
