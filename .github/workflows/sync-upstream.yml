@@ -1,0 +1,51 @@
+name: Sync Upstream
+
+'on':
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/semaphoreui/semaphore.git
+          git fetch upstream develop --no-tags
+
+      - name: Merge upstream develop
+        run: |
+          git checkout develop
+          git merge --no-edit upstream/develop
+
+      - name: Push merged branch
+        run: |
+          git push origin develop
+
+      - name: Mirror upstream tags
+        run: |
+          git ls-remote --tags --refs upstream \
+            | while read -r commit ref; do
+                tag="${ref#refs/tags/}"
+                git fetch upstream "refs/tags/$tag:refs/tags/$tag"
+                git push origin "refs/tags/$tag:refs/tags/$tag"
+              done
