@@ -86,6 +86,7 @@ import socket from '@/socket';
 import TaskLink from '@/components/TaskLink.vue';
 import TaskStatus from '@/components/TaskStatus.vue';
 import { getBootScheduleEntries, getTodayScheduleEntries } from '@/lib/scheduleOverview';
+import { resolveTimezone } from '@/lib/timezone';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -117,7 +118,7 @@ export default {
 
   computed: {
     timezoneName() {
-      return (this.systemInfo || {}).schedule_timezone || 'UTC';
+      return resolveTimezone((this.systemInfo || {}).schedule_timezone);
     },
     items() {
       if (this.mode === 'today') {

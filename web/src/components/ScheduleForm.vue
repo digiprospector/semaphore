@@ -336,6 +336,8 @@ import utc from 'dayjs/plugin/utc';
 import timezonePlugin from 'dayjs/plugin/timezone';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
+import { resolveTimezone } from '@/lib/timezone';
+
 import { CronExpressionParser } from 'cron-parser';
 import {
   isWeekly,
@@ -550,7 +552,11 @@ export default {
 
   computed: {
     localTimezone() {
-      return 'Local';
+      return resolveTimezone('Local');
+    },
+
+    scheduleTimezone() {
+      return resolveTimezone(this.timezone);
     },
 
     runAtRules() {
@@ -564,7 +570,7 @@ export default {
     },
 
     nextRunUtcDate() {
-      return formatDateInTZ(this.nextRunTime(), this.timezone);
+      return formatDateInTZ(this.nextRunTime(), this.scheduleTimezone);
     },
 
     nextRunLocalDate() {
@@ -573,7 +579,7 @@ export default {
     },
 
     nextRunUtcTime() {
-      return formatTimeInTZ(this.nextRunTime(), this.timezone);
+      return formatTimeInTZ(this.nextRunTime(), this.scheduleTimezone);
     },
 
     nextRunLocalTime() {
@@ -598,7 +604,7 @@ export default {
     },
 
     setDefaultRunAt() {
-      const nextHour = dayjs().tz(this.timezone).add(1, 'hour').minute(0)
+      const nextHour = dayjs().tz(this.scheduleTimezone).add(1, 'hour').minute(0)
         .second(0)
         .millisecond(0);
 
@@ -611,7 +617,7 @@ export default {
         return;
       }
 
-      const parsed = dayjs(this.item.run_at).tz(this.timezone);
+      const parsed = dayjs(this.item.run_at).tz(this.scheduleTimezone);
       this.runAtInput = parsed.isValid() ? parsed.format(RUN_AT_FORMAT) : '';
     },
 
@@ -619,7 +625,7 @@ export default {
       if (this.type === 'run_at') {
         const runAt = this.item.run_at ? dayjs(this.item.run_at) : null;
         const parsed = this.runAtInput
-          ? dayjs.tz(this.runAtInput, RUN_AT_FORMAT, this.timezone)
+          ? dayjs.tz(this.runAtInput, RUN_AT_FORMAT, this.scheduleTimezone)
           : runAt;
 
         if (!parsed || !parsed.isValid()) {
@@ -631,7 +637,7 @@ export default {
 
       try {
         return CronExpressionParser.parse(this.item.cron_format, {
-          tz: this.timezone,
+          tz: this.scheduleTimezone,
         }).next().toDate();
       } catch {
         return null;
@@ -689,7 +695,7 @@ export default {
       let cron;
       try {
         cron = CronExpressionParser.parse(this.item.cron_format, {
-          tz: this.timezone,
+          tz: this.scheduleTimezone,
         });
       } catch {
         // Valid on the backend but not parseable by cron-parser
@@ -763,7 +769,7 @@ export default {
 
       if (this.type === 'run_at') {
         const parsed = this.runAtInput
-          ? dayjs.tz(this.runAtInput, RUN_AT_FORMAT, this.timezone)
+          ? dayjs.tz(this.runAtInput, RUN_AT_FORMAT, this.scheduleTimezone)
           : null;
 
         if (!parsed || !parsed.isValid()) {

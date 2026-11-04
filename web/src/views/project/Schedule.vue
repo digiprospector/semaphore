@@ -169,6 +169,7 @@ import axios from 'axios';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezonePlugin from 'dayjs/plugin/timezone';
+import { resolveTimezone } from '@/lib/timezone';
 
 dayjs.extend(utc);
 dayjs.extend(timezonePlugin);
@@ -196,7 +197,7 @@ export default {
         return '—';
       }
 
-      const tz = this.systemInfo?.schedule_timezone || 'UTC';
+      const tz = resolveTimezone(this.systemInfo?.schedule_timezone);
       const parsed = dayjs(item.run_at).tz(tz);
 
       if (!parsed.isValid()) {
