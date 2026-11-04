@@ -15,5 +15,6 @@ func Version() string {
 		Ver,
 		Commit,
 		Date,
+		"dp",
 	}, "-")
 }
