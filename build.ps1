@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $publicPlaceholder = Join-Path $repoRoot 'api\public\.gitkeep'
 $previousCgoEnabled = $env:CGO_ENABLED
+$previousBuildType = $env:VUE_APP_BUILD_TYPE
 $placeholderBytes = $null
 if (Test-Path -LiteralPath $publicPlaceholder) {
     $placeholderBytes = [System.IO.File]::ReadAllBytes($publicPlaceholder)
@@ -10,8 +11,16 @@ if (Test-Path -LiteralPath $publicPlaceholder) {
 
 Push-Location $repoRoot
 try {
+    $env:VUE_APP_BUILD_TYPE = ''
     Push-Location (Join-Path $repoRoot 'web')
     try {
+        if (-not (Test-Path -LiteralPath (Join-Path (Get-Location) 'node_modules\vite'))) {
+            npm ci
+            if ($LASTEXITCODE -ne 0) {
+                throw "Frontend dependency installation failed with exit code $LASTEXITCODE"
+            }
+        }
+
         npm run build
         if ($LASTEXITCODE -ne 0) {
             throw "Frontend build failed with exit code $LASTEXITCODE"
@@ -33,6 +42,13 @@ try {
     Write-Host "Build complete: $(Join-Path $binDirectory 'semaphore.exe')"
 }
 finally {
+    if ($null -eq $previousBuildType) {
+        Remove-Item Env:VUE_APP_BUILD_TYPE -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:VUE_APP_BUILD_TYPE = $previousBuildType
+    }
+
     if ($null -eq $previousCgoEnabled) {
         Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
     }
