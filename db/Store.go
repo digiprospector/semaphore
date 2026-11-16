@@ -465,6 +465,11 @@ type TaskManager interface {
 	UpdateTask(task Task) error
 	UpdateTaskArtifacts(projectID int, taskID int, artifacts *string) error
 	SetWaitingTasksToStopped(projectID int, templateID int) error
+	// MarkRunningTasksAsSuccess finalizes tasks left in the "running" state by a
+	// previous process, setting their status to "success". Tasks assigned to a
+	// remote runner (runner_id not null) and tasks in excludeIDs (still tracked by
+	// the live cluster) are left untouched. Returns the number of updated rows.
+	MarkRunningTasksAsSuccess(excludeIDs []int) (int64, error)
 	GetTemplateTasks(projectID int, templateID int, params RetrieveQueryParams) ([]TaskWithTpl, error)
 	GetProjectTasks(projectID int, params RetrieveQueryParams) ([]TaskWithTpl, error)
 	GetScheduleTasks(projectID int, scheduleIDs []int, params RetrieveQueryParams) ([]TaskWithTpl, error)

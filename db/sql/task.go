@@ -3,6 +3,7 @@ package sql
 import (
 	"encoding/json"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -235,6 +236,33 @@ func (d *SqlDb) SetWaitingTasksToStopped(projectID int, templateID int) error {
 		projectID,
 		task_logger.TaskWaitingStatus)
 	return err
+}
+
+// MarkRunningTasksAsSuccess finalizes tasks left in the "running" state by a
+// previous process. Semaphore runs a task's worker in-process, so after a
+// restart a "running" row with no remote runner is necessarily an orphan and is
+// closed as "success". Tasks dispatched to a remote runner keep a runner_id:
+// their runner may still own the job, so they are excluded here and left to the
+// runner reconciler / HA orphan cleaner. excludeIDs lets the caller skip tasks
+// it is still actively tracking (e.g. in the shared HA state store), so only
+// genuinely abandoned rows are touched. Returns the number of rows updated.
+func (d *SqlDb) MarkRunningTasksAsSuccess(excludeIDs []int) (int64, error) {
+	args := []any{task_logger.TaskSuccessStatus, time.Now().UTC(), task_logger.TaskRunningStatus}
+	query := "update task set status=?, `end`=? where status=? and runner_id is null"
+
+	if len(excludeIDs) > 0 {
+		for _, id := range excludeIDs {
+			args = append(args, id)
+		}
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(excludeIDs)), ",")
+		query += " and id not in (" + placeholders + ")"
+	}
+
+	res, err := d.exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (d *SqlDb) CreateTaskOutput(output db.TaskOutput) (db.TaskOutput, error) {

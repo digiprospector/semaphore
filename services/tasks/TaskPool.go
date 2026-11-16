@@ -290,11 +290,43 @@ func (p *TaskPool) GetTaskByAlias(alias string) (task *TaskRunner) {
 	return p.state.GetByAlias(alias)
 }
 
+// recoverStaleRunningTasks finalizes tasks left in the "running" state by a
+// process that has since exited. Semaphore runs a task's worker in-process, so
+// a local running task whose process died can never complete on its own; it is
+// closed as "success" so it does not stay stuck forever. Tasks still tracked by
+// the live cluster are excluded: a task in the shared HA state store, or one
+// dispatched to a remote runner, may genuinely still be running elsewhere and
+// must not be clobbered here.
+func (p *TaskPool) recoverStaleRunningTasks() {
+	excludeIDs := make([]int, 0)
+	for _, t := range p.state.QueueRange() {
+		if t != nil {
+			excludeIDs = append(excludeIDs, t.Task.ID)
+		}
+	}
+	for _, t := range p.state.RunningRange() {
+		if t != nil {
+			excludeIDs = append(excludeIDs, t.Task.ID)
+		}
+	}
+
+	count, err := p.store.MarkRunningTasksAsSuccess(excludeIDs)
+	if err != nil {
+		log.WithError(err).Warn("failed to finalize stale running tasks at startup")
+		return
+	}
+	if count > 0 {
+		log.WithField("count", count).Info("Stale running tasks marked as success at startup")
+	}
+}
+
 // nolint: gocyclo
 func (p *TaskPool) Run() {
 	ticker := time.NewTicker(5 * time.Second)
 
 	defer ticker.Stop()
+
+	p.recoverStaleRunningTasks()
 
 	// In HA mode the state store relays cross-node stop requests: when another
 	// node stops a workflow run, tasks owned by this node must be killed here.
