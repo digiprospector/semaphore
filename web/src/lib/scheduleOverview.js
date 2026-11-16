@@ -127,9 +127,15 @@ export function getBootScheduleEntries(schedules, tasks, bootTime, eligibleSched
     };
 
     const taskEnd = task.end ? dayjs(task.end) : null;
-    const finished = taskEnd || ['success', 'error', 'stopped'].includes(task.status);
+    const staleRunning = task.status === 'running'
+      && task.start
+      && dayjs(task.start).isBefore(bootStart);
+    const finished = taskEnd || staleRunning
+      || ['success', 'error', 'stopped'].includes(task.status);
     let section = '4_pending';
-    if (finished) {
+    if (staleRunning) {
+      section = '1_history';
+    } else if (finished) {
       const finishedAt = taskEnd || dayjs(task.start || task.created);
       section = finishedAt.isBefore(bootStart) ? '1_history' : '2_completed';
     } else if (task.start) {
@@ -140,7 +146,7 @@ export function getBootScheduleEntries(schedules, tasks, bootTime, eligibleSched
     rows.push({
       ...schedule,
       row_key: `task-${task.id}`,
-      task,
+      task: staleRunning ? { ...task, status: 'success' } : task,
       section,
     });
   });

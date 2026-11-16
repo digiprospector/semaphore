@@ -20,19 +20,21 @@
       :headers="headers"
       :items="items"
       item-key="row_key"
-      :group-by="mode === 'boot' ? ['section'] : []"
+      :group-by="mode === 'boot' ? [{ key: 'section', order: 'asc' }] : []"
       :loading="loading"
       :items-per-page="20"
       :footer-props="{ itemsPerPageOptions: [20, 50, 100] }"
       class="mt-4"
     >
-      <template v-slot:group.header="{ group, items, isOpen, toggle }">
-        <td :colspan="headers.length">
-          <v-btn icon small @click="toggle">
-            <v-icon>{{ isOpen ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>
-          </v-btn>
-          {{ sectionTitle(group) }} ({{ items.length }})
-        </td>
+      <template v-slot:group-header="{ item, columns, toggleGroup, isGroupOpen }">
+        <tr>
+          <td :colspan="columns.length">
+            <v-btn icon size="small" @click="toggleGroup(item)">
+              <v-icon>{{ isGroupOpen(item) ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>
+            </v-btn>
+            {{ sectionTitle(item.value) }} ({{ item.items.length }})
+          </td>
+        </tr>
       </template>
       <template v-slot:item.name="{ item }">
         {{ item.name || '—' }}
@@ -59,13 +61,13 @@
         <v-chip v-else style="font-weight: bold;">{{ $t('scheduledStatus') }}</v-chip>
       </template>
       <template v-slot:item.start="{ item }">
-        <span v-if="item.task && item.task.start">{{ item.task.start | formatDate }}</span>
+        <span v-if="item.task && item.task.start">{{ $filters.formatDate(item.task.start) }}</span>
         <span v-else-if="mode === 'boot'">{{ formatExpectedStart(item) }}</span>
         <span v-else>&mdash;</span>
       </template>
       <template v-slot:item.duration="{ item }">
         <span v-if="item.task && item.task.start">
-          {{ [item.task.start, item.task.end] | formatMilliseconds }}
+          {{ $filters.formatMilliseconds([item.task.start, item.task.end]) }}
         </span>
         <span v-else>&mdash;</span>
       </template>
@@ -133,13 +135,13 @@ export default {
     },
     headers() {
       const headers = [
-        { text: this.$t('name'), value: 'name' },
-        { text: this.$t('template'), value: 'template' },
-        { text: this.$t('scheduledFor'), value: 'timing' },
-        { text: this.$t('task2'), value: 'task' },
-        { text: this.$t('status'), value: 'status' },
-        { text: this.$t('start'), value: 'start' },
-        { text: this.$t('duration'), value: 'duration' },
+        { title: this.$t('name'), key: 'name' },
+        { title: this.$t('template'), key: 'template' },
+        { title: this.$t('scheduledFor'), key: 'timing' },
+        { title: this.$t('task2'), key: 'task' },
+        { title: this.$t('status'), key: 'status' },
+        { title: this.$t('start'), key: 'start' },
+        { title: this.$t('duration'), key: 'duration' },
       ];
       return headers;
     },
@@ -166,8 +168,14 @@ export default {
     },
     async loadSchedules() {
       if (!this.projectId) return;
+      const requestId = (this.loadRequestId || 0) + 1;
+      this.loadRequestId = requestId;
       this.loading = true;
       this.loadError = null;
+      this.schedules = [];
+      this.tasks = [];
+      this.bootTime = null;
+      this.eligibleScheduleIDs = [];
       try {
         if (this.mode === 'boot') {
           const response = await axios({
@@ -175,6 +183,7 @@ export default {
             url: `/api/project/${this.projectId}/schedules/on_boot/overview`,
             responseType: 'json',
           });
+          if (requestId !== this.loadRequestId) return;
           this.schedules = response.data.schedules || [];
           this.tasks = response.data.tasks || [];
           this.bootTime = response.data.boot_time;
@@ -185,17 +194,19 @@ export default {
             url: `/api/project/${this.projectId}/schedules/today/overview`,
             responseType: 'json',
           });
+          if (requestId !== this.loadRequestId) return;
           this.schedules = response.data.schedules || [];
           this.tasks = response.data.tasks || [];
         }
       } catch (error) {
+        if (requestId !== this.loadRequestId) return;
         this.schedules = [];
         this.tasks = [];
         this.bootTime = null;
         this.eligibleScheduleIDs = [];
         this.loadError = this.$t('schedulesLoadFailed');
       } finally {
-        this.loading = false;
+        if (requestId === this.loadRequestId) this.loading = false;
       }
     },
     async onWebsocketDataReceived(data) {

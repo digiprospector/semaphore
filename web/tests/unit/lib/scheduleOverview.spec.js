@@ -252,6 +252,24 @@ describe('lib/scheduleOverview', () => {
     expect(new Set(result.map((entry) => entry.row_key)).size).to.equal(6);
   });
 
+  it('marks a running on_boot task from before the current boot as historical success', () => {
+    const result = getBootScheduleEntries([
+      { id: 1, template_id: 7, active: true, type: 'on_boot', name: 'boot task' },
+    ], [
+      {
+        id: 20,
+        schedule_id: 1,
+        created: '2026-01-01T00:00:00.000Z',
+        start: '2026-01-01T00:00:01.000Z',
+        status: 'running',
+      },
+    ], '2026-02-01T00:00:00.000Z', []);
+
+    expect(result).to.have.length(1);
+    expect(result[0].section).to.equal('1_history');
+    expect(result[0].task.status).to.equal('success');
+  });
+
   it('formats a pending boot task start as a countdown and scheduled local time', () => {
     const bootTime = new Date(Date.now() + 30 * 60 * 1000 + 30 * 1000).toISOString();
     const result = ScheduleOverview.methods.formatExpectedStart.call({

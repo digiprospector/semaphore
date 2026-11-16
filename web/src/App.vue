@@ -280,12 +280,11 @@
           :to="`/project/${projectId}/today`"
           data-testid="sidebar-today"
         >
-          <v-list-item-icon>
+          <template v-slot:prepend>
             <v-icon>mdi-calendar-today</v-icon>
-          </v-list-item-icon>
-          <v-list-item-content>
-            <v-list-item-title>{{ $t('today') }}</v-list-item-title>
-          </v-list-item-content>
+          </template>
+
+          <v-list-item-title>{{ $t('today') }}</v-list-item-title>
         </v-list-item>
 
         <v-list-item
@@ -293,12 +292,11 @@
           :to="`/project/${projectId}/boot`"
           data-testid="sidebar-boot"
         >
-          <v-list-item-icon>
+          <template v-slot:prepend>
             <v-icon>mdi-power</v-icon>
-          </v-list-item-icon>
-          <v-list-item-content>
-            <v-list-item-title>{{ $t('boot') }}</v-list-item-title>
-          </v-list-item-content>
+          </template>
+
+          <v-list-item-title>{{ $t('boot') }}</v-list-item-title>
         </v-list-item>
 
         <v-list-item
