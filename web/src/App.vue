@@ -52,6 +52,16 @@
       :can-read="canReadProject"
     />
 
+    <WorkflowRunPanel
+      v-model="workflowRunPanel"
+      @close="onWorkflowRunPanelClosed()"
+      :project-id="projectId"
+      :workflow-id="(workflowRun || {}).workflowId"
+      :run-id="(workflowRun || {}).runId"
+      :user-permissions="(userRole || {}).permissions"
+      :is-admin="(user || {}).admin"
+    />
+
     <EditDialog
       v-model="newProjectDialog"
       test-id="appNewProjectDialog"
@@ -1262,6 +1272,7 @@ import ProjectForm from '@/components/ProjectForm.vue';
 import UserForm from '@/components/UserForm.vue';
 import EventBus from '@/event-bus';
 import { navMiniForPath } from '@/lib/workflowEditorPrefs';
+import { workflowRunFromQuery, queryWithoutWorkflowRun } from '@/lib/workflowRunQuery';
 import socket from '@/socket';
 
 import SubscriptionForm from '@/components/SubscriptionForm.vue';
@@ -1269,6 +1280,7 @@ import RestoreProjectForm from '@/components/RestoreProjectForm.vue';
 import RestoreProjectResult from '@/components/RestoreProjectResult.vue';
 import YesNoDialog from '@/components/YesNoDialog.vue';
 import TaskLogDialog from '@/components/TaskLogDialog.vue';
+import WorkflowRunPanel from '@/components/WorkflowRunPanel.vue';
 import SystemInfoDialog from '@/components/SystemInfoDialog.vue';
 import delay from '@/lib/delay';
 
@@ -1347,6 +1359,7 @@ export default {
   components: {
     SubscriptionForm,
     TaskLogDialog,
+    WorkflowRunPanel,
     YesNoDialog,
     RestoreProjectForm,
     RestoreProjectResult,
@@ -1384,6 +1397,10 @@ export default {
       restoreProjectResultDialog: null,
 
       taskLogDialog: null,
+      // The run panel follows `?w=<workflow>/<run>` of the route, as the task dialog follows
+      // `?t=<task>`.
+      workflowRunPanel: false,
+      workflowRun: null,
       taskId: null,
       template: null,
       darkMode: false,
@@ -1432,6 +1449,8 @@ export default {
           EventBus.$emit('i-show-task', { taskId });
         }
       }
+
+      this.showWorkflowRunOfRoute();
 
       if ((this.projects || []).length > 0 && this.$route.query.new_project) {
         EventBus.$emit('i-new-project', { projectType: this.$route.query.new_project });
@@ -1895,8 +1914,33 @@ export default {
     },
 
     async onTaskLogDialogClosed() {
-      const query = { ...this.$route.query, t: undefined };
-      await this.$router.replace({ query });
+      await this.editQuery((query) => ({ ...query, t: undefined }));
+    },
+
+    // Replaces the query of the route with what `edit` makes of it. The edits wait for one
+    // another, so each starts from the query the one before it left: the task dialog and the run
+    // panel closed in a row (Escape twice) would otherwise both start from the same query, and
+    // the second would bring back what the first had removed.
+    editQuery(edit) {
+      const previous = this.queryEdit || Promise.resolve();
+      this.queryEdit = previous
+        .catch(() => {})
+        .then(() => this.$router.replace({ query: edit(this.$route.query) }));
+      return this.queryEdit;
+    },
+
+    // Opens the run panel on the run the route names with `?w=`, closes it when it names none.
+    // The panel keeps its run while it slides away.
+    showWorkflowRunOfRoute() {
+      const run = this.projectId ? workflowRunFromQuery(this.$route.query) : null;
+      if (run != null) {
+        this.workflowRun = run;
+      }
+      this.workflowRunPanel = run != null;
+    },
+
+    async onWorkflowRunPanelClosed() {
+      await this.editQuery(queryWithoutWorkflowRun);
     },
 
     async loadData() {
@@ -1926,6 +1970,9 @@ export default {
           EventBus.$emit('i-show-task', { taskId });
         }
       }
+
+      // display workflow run panel if query param w specified
+      this.showWorkflowRunOfRoute();
 
       if ((this.projects || []).length > 0 && this.$route.query.new_project != null) {
         EventBus.$emit('i-new-project', { projectType: this.$route.query.new_project });
@@ -1976,7 +2023,8 @@ export default {
         return;
       }
 
-      let query = {};
+      // A run of the panel belongs to the project it was opened in: another project closes it.
+      let query = queryWithoutWorkflowRun({});
 
       switch (this.$route.path) {
         case '/project/new':
